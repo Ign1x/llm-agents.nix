@@ -6,11 +6,12 @@ const path = require("node:path");
 const [appDir, version, shell] = process.argv.slice(2);
 assert.ok(process.versions.electron, "Use the packaged Electron for native ABI checks");
 
-const asar = path.join(appDir, "resources/app.asar");
+const resources = path.join(appDir, process.platform === "darwin" ? "Resources" : "resources");
+const asar = path.join(resources, "app.asar");
 const metadata = JSON.parse(fs.readFileSync(path.join(asar, "package.json"), "utf8"));
 assert.equal(metadata.name, "kimi-code-app");
 assert.equal(metadata.version, version);
-assert.ok(fs.statSync(path.join(appDir, "resources/desktop-dist/index.html")).isFile());
+assert.ok(fs.statSync(path.join(resources, "desktop-dist/index.html")).isFile());
 
 // Search must work without downloading an executable on first launch.
 assert.match(execFileSync("rg", ["--version"], { encoding: "utf8" }), /^ripgrep /);

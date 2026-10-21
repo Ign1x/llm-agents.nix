@@ -1,6 +1,7 @@
 {
   lib,
   flake,
+  callPackage,
   stdenvNoCC,
   platformSource,
   mkUpdater,
@@ -71,6 +72,28 @@ let
     fd
     ripgrep
   ];
+  installDarwin = ''
+    mkdir -p "$out/libexec/${pname}" "$out/bin"
+    app="$out/libexec/${pname}/Kimi Code.app"
+    cp -a 'Kimi Code.app' "$app"
+
+    # Finder bypasses bin/. Give it the same launcher while keeping the signed
+    # upstream bundle untouched, including its executable and Info.plist.
+    contents="$out/Applications/Kimi Code.app/Contents"
+    mkdir -p "$contents/MacOS"
+    for resource in Info.plist PkgInfo Frameworks Resources; do
+      ln -s "$app/Contents/$resource" "$contents/$resource"
+    done
+    # This outer bundle is a launcher, so do not copy upstream's _CodeSignature.
+    makeShellWrapper "$app/Contents/MacOS/Kimi Code" \
+      "$contents/MacOS/Kimi Code" \
+      --prefix PATH : ${lib.makeBinPath agentTools}
+    ln -s '../Applications/Kimi Code.app/Contents/MacOS/Kimi Code' "$out/bin/${pname}"
+  '';
+  darwinLauncherTest = callPackage ./darwin-launcher-test.nix {
+    inherit installDarwin;
+    toolPath = lib.makeBinPath agentTools;
+  };
 in
 stdenvNoCC.mkDerivation {
   inherit pname;
@@ -163,14 +186,7 @@ stdenvNoCC.mkDerivation {
     else
       ''
         runHook preInstall
-
-        mkdir -p "$out/Applications" "$out/bin"
-        cp -a 'Kimi Code.app' "$out/Applications/"
-        # The external launcher leaves every upstream Mach-O signature intact.
-        makeShellWrapper "$out/Applications/Kimi Code.app/Contents/MacOS/Kimi Code" \
-          "$out/bin/${pname}" \
-          --prefix PATH : ${lib.makeBinPath agentTools}
-
+        ${installDarwin}
         runHook postInstall
       '';
 
@@ -202,6 +218,8 @@ stdenvNoCC.mkDerivation {
   codesignTeamId = teamId;
   installCheckPhase = ''
     runHook preInstallCheck
+    # Exercise the macOS launch layout on every host without fetching its archive.
+    test -d ${darwinLauncherTest}
     ${lib.optionalString isLinux ''
       export HOME=$(mktemp -d)
       ELECTRON_RUN_AS_NODE=1 "$out/bin/${pname}" \
@@ -213,6 +231,16 @@ stdenvNoCC.mkDerivation {
       test -f "$out/share/icons/hicolor/512x512/apps/kimi-code.png"
       test -f "$out/share/metainfo/com.kimi.code.desktop.metainfo.xml"
     ''}
+    ${lib.optionalString isDarwin ''
+      app="$out/libexec/${pname}/Kimi Code.app"
+      diff -r 'Kimi Code.app' "$app"
+      export HOME=$(mktemp -d)
+      for entry in "$out/Applications/Kimi Code.app/Contents/MacOS/Kimi Code" "$out/bin/${pname}"; do
+        env -i HOME="$HOME" PATH=/usr/bin:/bin ELECTRON_RUN_AS_NODE=1 "$entry" \
+          ${./runtime-smoke.cjs} "$app/Contents" ${lib.escapeShellArg source.version} \
+          ${stdenvNoCC.shell}
+      done
+    ''}
     runHook postInstallCheck
   '';
 
@@ -223,6 +251,7 @@ stdenvNoCC.mkDerivation {
       inherit teamId;
       srcs = source.darwinSrcs;
     };
+    tests.darwin-launcher = darwinLauncherTest;
     updater = mkUpdater (
       source.updater
       // {
