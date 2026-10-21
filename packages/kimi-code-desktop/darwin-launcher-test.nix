@@ -6,6 +6,7 @@
   fd,
   ripgrep,
   installDarwin,
+  resetDarwinAppDirs,
   toolPath,
 }:
 
@@ -15,6 +16,7 @@ runCommand "kimi-code-desktop-darwin-launcher-test" { nativeBuildInputs = [ make
   out="$TMPDIR/packaged app"
   original='Kimi Code.app/Contents'
   mkdir -p "$original"/{MacOS,Resources,Frameworks,_CodeSignature}
+  printf 'hidden bundle metadata\n' > 'Kimi Code.app/.bundle-metadata'
   printf 'upstream metadata\n' > "$original/Info.plist"
   printf 'APPL????' > "$original/PkgInfo"
   printf 'upstream icon\n' > "$original/Resources/icon.icns"
@@ -32,9 +34,18 @@ runCommand "kimi-code-desktop-darwin-launcher-test" { nativeBuildInputs = [ make
   chmod +x "$original/MacOS/Kimi Code"
 
   ${installDarwin}
-
   app="$out/libexec/kimi-code-desktop/Kimi Code.app"
   contents="$out/Applications/Kimi Code.app/Contents"
+  appInode=$(stat -c %i "$app")
+  launcherInode=$(stat -c %i "$out/Applications/Kimi Code.app")
+  # Directory recreation must retain the complete bundle, including hidden
+  # entries, and leave both launchers usable.
+  ${resetDarwinAppDirs}
+  app="$out/libexec/kimi-code-desktop/Kimi Code.app"
+  test "$(stat -c %i "$app")" != "$appInode"
+  test "$(stat -c %i "$out/Applications/Kimi Code.app")" != "$launcherInode"
+  test ! -e "$app.tmp"
+  test ! -e "$out/Applications/Kimi Code.app.tmp"
   diff -r 'Kimi Code.app' "$app"
   for resource in Info.plist PkgInfo Frameworks Resources; do
     test "$(readlink "$contents/$resource")" = "$app/Contents/$resource"

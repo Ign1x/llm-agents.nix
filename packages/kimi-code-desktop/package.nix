@@ -90,8 +90,19 @@ let
       --prefix PATH : ${lib.makeBinPath agentTools}
     ln -s '../Applications/Kimi Code.app/Contents/MacOS/Kimi Code' "$out/bin/${pname}"
   '';
+  resetDarwinAppDirs = ''
+    for app in "$out/libexec/${pname}/Kimi Code.app" "$out/Applications/Kimi Code.app"; do
+      mv "$app" "$app.tmp"
+      mkdir "$app"
+      (
+        shopt -s dotglob
+        mv "$app.tmp"/* "$app/"
+      )
+      rmdir "$app.tmp"
+    done
+  '';
   darwinLauncherTest = callPackage ./darwin-launcher-test.nix {
-    inherit installDarwin;
+    inherit installDarwin resetDarwinAppDirs;
     toolPath = lib.makeBinPath agentTools;
   };
 in
@@ -243,6 +254,11 @@ stdenvNoCC.mkDerivation {
     ''}
     runHook postInstallCheck
   '';
+  # Running the signed app can attach a protected com.apple.macl xattr to its
+  # directory, preventing nix-daemon from canonicalising the output. Recreate
+  # only the directories after runtime checks; signed contents stay intact.
+  # This is the same workaround used by junie.
+  postInstallCheck = lib.optionalString isDarwin resetDarwinAppDirs;
 
   passthru = {
     category = "AI Coding Agents";
