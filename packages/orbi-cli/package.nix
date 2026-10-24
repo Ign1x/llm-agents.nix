@@ -11,26 +11,27 @@
 
 python3.pkgs.buildPythonApplication rec {
   pname = "orbi-cli";
-  version = "0.7.12";
+  version = "0.7.15";
   pyproject = true;
 
   src = fetchPypi {
     pname = "orbi_cli";
     inherit version;
-    hash = "sha256-IyGfkVZdNt172gEqcVE7SC9OPkvKDcls2FH2CrPsXcI=";
+    hash = "sha256-uyI7OazLzBZadMQeKuXQnwvRUUq6ksfy4Clfr8mych4=";
   };
 
   build-system = [ python3.pkgs.setuptools ];
 
   # Suffix, so that the user's own gh, git and pi win.
   makeWrapperArgs = [
-    "--suffix PATH : ${
-      lib.makeBinPath [
-        gh
-        git
-        pi
-      ]
-    }"
+    "--suffix"
+    "PATH"
+    ":"
+    (lib.makeBinPath [
+      gh
+      git
+      pi
+    ])
   ];
 
   # The sdist ships tests/ without its conftest.py and helper modules.

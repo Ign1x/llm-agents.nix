@@ -15,19 +15,37 @@
 }:
 
 let
+  # Hermes' Anthropic adapter passes httpx objects; SDK 1.x requires httpx2.
+  # Keep this private dependency aligned with the upstream extra, not nixpkgs.
+  anthropic = python3.pkgs.anthropic.overridePythonAttrs (old: {
+    version = "0.87.0";
+    src = fetchFromGitHub {
+      owner = "anthropics";
+      repo = "anthropic-sdk-python";
+      tag = "v0.87.0";
+      hash = "sha256-T9DMOwtCd63BNR3V21Y2s1BbUg5X4N5W/RjtmG8+aWs=";
+    };
+    dependencies =
+      builtins.filter (dependency: dependency.pname or "" != "httpx2") old.dependencies
+      ++ [
+        python3.pkgs.httpx
+        python3.pkgs.distro
+      ];
+  });
+
   # Native (PyO3) runtime for hermes' Relay lifecycle and shared metrics.
   # PyPI ships wheels only, so build from source with maturin.
   # Version is kept in range of hermes' pyproject constraint by update.py.
   nemo-relay = python3.pkgs.buildPythonPackage rec {
     pname = "nemo-relay";
-    version = "0.10.3";
+    version = "0.10.4";
     pyproject = true;
 
     src = fetchFromGitHub {
       owner = "NVIDIA";
       repo = "NeMo-Relay";
       tag = version;
-      hash = "sha256-+2jhLqjcYUWBhuwNMaVK/ICtnrwYuc5gtCo6b8EGp68=";
+      hash = "sha256-6wB3TnrkymwsTia5RVq7fQ6g375lZHba0DUXTFjxV2w=";
     };
 
     cargoDeps = rustPlatform.fetchCargoVendor {
@@ -266,15 +284,15 @@ let
     };
   };
 
-  version = "0.22.2";
+  version = "0.22.5";
   # The commit of the tag. Hermes ignores an install stamp without one.
-  rev = "d923a5eb487a17c0a68801bba9ef0f56c81040a8";
+  rev = "bf0203a794a07aac3ff764972ab9087baa4e4f4e";
 
   src = fetchFromGitHub {
     owner = "NousResearch";
     repo = "hermes-agent";
     tag = "v${version}";
-    hash = "sha256-Zs5Jr2BZ89RHbyj2WX2y4hIh4Vuwz8mJvGJooWytCk4=";
+    hash = "sha256-/sgbU4D8wSQ0GmfR8Qwpn4YySh+ELQ6SnplCdGt6pnQ=";
     # contributors/emails/ holds paths differing only in case; they collapse
     # on case-insensitive stores (APFS) so the NAR hash diverges between
     # Linux and darwin. Unused at build/runtime. Upstream:
@@ -292,7 +310,7 @@ let
   hermes-frontend = buildNpmPackage {
     pname = "hermes-frontend";
     inherit version src;
-    npmDepsHash = "sha256-45CV8Qavo5UQlUfSQuWzhZK1Xicx9iW8dDDsDvAM2Dc=";
+    npmDepsHash = "sha256-4rf/ivClNHrUUJSMAHStx+fPnFc5EUfDuvefCt5Ry74=";
 
     # The apps/desktop workspace pulls in electron; skip its binary download
     # and all install scripts — the esbuild/vite builds below don't need them.
@@ -503,6 +521,8 @@ python3.pkgs.buildPythonApplication {
   # These re-exec sys.executable, which is the bare interpreter without Hermes'
   # dependencies under Nix. Use the wrapper-provided env.
   postPatch = ''
+    # Fail an update rather than silently keeping an SDK that upstream replaced.
+    ${python3.interpreter} -c 'import tomllib; p = tomllib.load(open("pyproject.toml", "rb")); expected = "anthropic==${anthropic.version}"; actual = p["project"]["optional-dependencies"]["anthropic"]; assert actual == [expected], f"Anthropic pin changed: {actual}; review the private SDK override"'
     substituteInPlace tui_gateway/server.py \
       --replace-fail 'argv = [sys.executable, "-m", "tui_gateway.slash_worker"' \
         'argv = [os.environ.get("HERMES_PYTHON", sys.executable), "-m", "tui_gateway.slash_worker"'
@@ -512,6 +532,9 @@ python3.pkgs.buildPythonApplication {
     substituteInPlace hermes_cli/doctor_platform.py \
       --replace-fail '[sys.executable, "-c", "import hermes_cli.web_server"]' \
         '[os.environ.get("HERMES_PYTHON", sys.executable), "-c", "import hermes_cli.web_server"]'
+    substituteInPlace hermes_cli/gateway_runtime_start.py \
+      --replace-fail 'command = [sys.executable, "-m", "hermes_cli.main"' \
+        'command = [os.environ.get("HERMES_PYTHON", sys.executable), "-m", "hermes_cli.main"'
   '';
 
   # setup.py refuses to build wheels/sdists unless it knows this is a Nix
@@ -590,6 +613,8 @@ python3.pkgs.buildPythonApplication {
     "urllib3"
     "websockets"
     # nixpkgs moved past upstream's == pins
+    "prompt_toolkit"
+    "markdown"
     "rich"
     "pillow"
     "croniter"

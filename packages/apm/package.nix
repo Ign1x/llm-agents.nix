@@ -81,14 +81,14 @@ let
 in
 python3.pkgs.buildPythonApplication (finalAttrs: {
   pname = "apm";
-  version = "0.34.0";
+  version = "0.35.0";
   pyproject = true;
 
   src = fetchFromGitHub {
     owner = "microsoft";
     repo = "apm";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-pO0HGXhscfPYMqqkHVO66mtSYpwCAtNSFHCSDPk/M3M=";
+    hash = "sha256-bMitX/+lDi1ba+TuorfYdN5eSJb0U/vrDuEGLelDwxw=";
   };
 
   build-system = with python3.pkgs; [
@@ -114,6 +114,9 @@ python3.pkgs.buildPythonApplication (finalAttrs: {
     watchdog
     websockets
   ];
+
+  # websockets<17 pin; the sync client apm uses is unchanged in 17.
+  pythonRelaxDeps = [ "websockets" ];
 
   pythonImportsCheck = [ "apm_cli" ];
 
